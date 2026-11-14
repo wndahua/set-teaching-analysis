@@ -25,7 +25,7 @@ SELECT semester,
 FROM set_courses GROUP BY semester;
 
 -- 4. 人数分组的平均分（对应 2.3 的 U 型）
-SELECT CASE WHEN size<=20  THEN '01-20'
+SELECT CASE WHEN size<=20  THEN '00-20'
             WHEN size<=35  THEN '21-35'
             WHEN size<=55  THEN '36-55'
             WHEN size<=80  THEN '56-80'
