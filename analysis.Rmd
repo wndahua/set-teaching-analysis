@@ -1,0 +1,557 @@
+---
+title: "数据科学导论 学生评教影响因素分析"
+author: "文锦鸿222024303250203"
+institute: "2025级统计班"
+date: "2026.10"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    lang: zh-CN
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 6,
+  fig.height = 4,
+  fig.align = "center",
+  out.width = "80%",
+  cache = FALSE
+  )
+```
+
+```{css, echo=FALSE}
+h1 { font-size: 24px; }
+h2 { font-size: 20px; }
+h3 { font-size: 18px; }
+h4 { font-size: 16px; }
+h1.title { font-size: 28px; }
+```
+
+
+# 1. 探索性分析
+
+## 数据
+
+实际教学中常遇到这样的情况：某老师给两个不同的班级上《数学分析》，假设他对每个班的付出基本相同，但最终两个班的**学生评教**（Student Evaluation of Teaching，SET）成绩却可能差别较大。这是因为有太多的非教师因素会影响学生评教成绩，如班级人数、学生类别等。
+
+数据集SET来源于某学院2002-2004年的学生评教记录，共340门课程。因变量是score（课程评分，单位：分），是学生打分的平均值。可能的影响因素包括：title（教师职称：助理教授、副教授、正教授）、gender（教师性别：男、女）、student（学生类别：MBA、本科生、研究生）、year（年份：2002、2003、2004）、semester（学期：秋季、春季）以及size（班级人数，单位：人）。
+
+读入数据并部分展示如下：
+
+```{r}
+library(tidyverse)
+setwd("C:/Users/wendashi/Desktop/ids_hw1")
+d = read.csv("SET.csv", header = T, stringsAsFactors = TRUE)
+head(d)
+```
+
+将数值型的类别变量year转为因子，并指定水平顺序（2002 < 2003 < 2004）：
+```{r}
+d$year <- factor(d$year, levels = c(2002, 2003, 2004))
+```
+
+
+
+## 基本统计量
+
+```{r}
+summary(d)
+```
+
+
+
+## 课程评分分布
+
+```{r}
+ggplot(data = d, aes(x = score)) + 
+  geom_histogram(bins = 30)
+```
+直方图显示：课程评分呈现出左偏（负偏态），表示多数课程评分较高，但有少数低分课程形成长尾，整体均值被低分端拉低。
+
+
+
+
+## 双变量分析
+
+```{r bivar, fig.width = 12, fig.height = 8, out.width = "100%"}
+library(patchwork)       # 用于拼图
+
+# 统一主题，避免每张图重复写
+th <- theme_bw(base_size = 10) +
+  theme(plot.title = element_text(face = "bold", size = 10),
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+# 连续 vs 连续 → 散点图
+p1 <- ggplot(d, aes(size, score)) +
+  geom_point(alpha = .5, size = 1.2) +
+  labs(title = "score vs size", x = "size", y = "score") + 
+  th
+
+# 分类 vs 连续 → 箱线图（5 张结构一样，只有 x 变量不同）
+p2 <- ggplot(d, aes(title, score)) +
+  geom_boxplot(fill = "steelblue", alpha = .7) +
+  labs(title = "score by title", x = "title", y = "score") + 
+  th
+
+p3 <- ggplot(d, aes(gender, score)) +
+  geom_boxplot(fill = "steelblue", alpha = .7) +
+  labs(title = "score by gender", x = "gender", y = "score") + 
+  th
+
+p4 <- ggplot(d, aes(student, score)) +
+  geom_boxplot(fill = "steelblue", alpha = .7) +
+  labs(title = "score by student", x = "student", y = "score") + 
+  th
+
+p5 <- ggplot(d, aes(year, score)) +
+  geom_boxplot(fill = "steelblue", alpha = .7) +
+  labs(title = "score by year", x = "year", y = "score") + 
+  th
+
+p6 <- ggplot(d, aes(semester, score)) +
+  geom_boxplot(fill = "steelblue", alpha = .7) +
+  labs(title = "score by semester", x = "semester", y = "score") + 
+  th
+
+# 排版两行三列
+(p1 | p2 | p3) / (p4 | p5 | p6)
+```
+结果显示：
+
+（1）随着班级人数增加，课程评分呈现下降趋势，而且不同课程评分之间的离散程度增大（异方差）；
+
+（2）课程评分中位数随职称呈现正教授最高、副教授居中、助理教授最低的特征，初步判断课程评分与教师职称可能存在关联；
+
+（3）男性课程评分中位数略高于女性，但是女性样本较少只有59门，初步判断教师性别对课程评分影响不大，关联性不高；
+
+（4）课程评分中位数随学生类别呈现研究生最高，本科生和MBA相当的特征，初步判断课程评分与学生类别可能存在关联；
+
+（5）课程评分随年份增长呈递增趋势，初步判断课程评分与年份可能存在关联；
+
+（6）春季学期课程评分明显高于秋季评分，是六个因素中单变量差异最大的。初步判断课程评分与春秋季学期存在关联。
+
+探索性分析显示，课程评分与班级人数、教师职称、教师性别、学生类别、评分年份及开课学期均存在一定的描述性关联。后续拟构建线性回归模型，在控制相关因素的基础上进一步检验这些变量与课程评分的关系。
+
+
+
+# 2. 全样本线性回归（解释性建模）
+
+使用全样本构建线性回归模型，重点从定量和可解释角度描述各自变量对课程评分的影响程度。
+
+## 2.1 模型设定与基准组
+
+R 在估计线性模型时，会把每个分类变量的第一个水平作为基准组。因子的默认水平顺序由字符编码决定，未必是想要的那一组，因此建模前手动固定基准组：职称以助理教授为基准，性别以男教师为基准，学生类别以 MBA 为基准，学期以秋季为基准；年份以 2002 年为基准。
+
+```{r}
+d$title    <- factor(d$title,    levels = c("助理教授", "副教授", "正教授"))
+d$gender   <- factor(d$gender,   levels = c("男", "女"))
+d$student  <- factor(d$student,  levels = c("MBA", "研究生", "本科生"))
+d$semester <- factor(d$semester, levels = c("秋季", "春季"))
+
+# 打印基准组，确认设置无误
+cat("基准组：", levels(d$title)[1], "/", levels(d$gender)[1], "/",
+    levels(d$student)[1], "/", levels(d$semester)[1], "/", levels(d$year)[1], "\n")
+```
+
+## 2.2 主模型结果
+
+```{r}
+library(broom)
+m1 <- lm(score ~ title + gender + student + year + semester + size, data = d)
+summary(m1)
+tidy(m1, conf.int = TRUE) |> knitr::kable(digits = 4)
+cat("R² =", round(summary(m1)$r.squared, 3),
+    "；调整 R² =", round(summary(m1)$adj.r.squared, 3), "\n")
+```
+
+上表为全样本模型的估计结果。模型整体解释了课程评分约 17% 的变异（R² = 0.171，调整 R² = 0.149），说明评分的绝大部分差异来自模型之外的课程与学生特征。
+
+在控制其他因素后，有可靠影响的因素主要有三类。
+
+（1）教师职称。基准组为助理教授。副教授的系数为 0.081，但未通过显著性检验（p = 0.257），不能认为副教授与助理教授存在可靠差异；正教授的系数为 0.261（p = 0.002），显著高于助理教授。可见职称的作用主要体现为“是否为正教授”这一步，并不随等级单调递增。
+
+（2）学生类别。研究生课程的评分比 MBA 高 0.278 分（p < 0.001），是分类变量中系数最大的一个；本科生比 MBA 高 0.083 分，但不显著（p = 0.227）。
+
+（3）年份。评分逐年上升，2003 年比 2002 年高 0.143 分（p = 0.019），2004 年高 0.227 分（p < 0.001）。
+
+教师性别（0.017，p = 0.806）与开课学期（0.009，p = 0.920）的系数都接近 0 且不显著，说明在现有样本下未发现它们与课程评分的可靠关联。“不显著”不等于“没有影响”，例如由女教师承担的课程只有 59 门，统计功效有限。
+
+班级人数的线性系数为 −0.0006（p = 0.585），与第 1 节看到的负相关不一致，原因在 2.4 中说明。
+
+截距 3.911 表示基准组（助理教授、男教师、MBA、2002 年秋季、班额为 0）的拟合评分。班额为 0 只是外推，截距本身没有实际含义，仅作为各系数比较的起点。
+
+## 2.3 班级人数的影响是否为非线性
+
+第 1 节的散点图显示，人数与评分的关系不像一条直线：中等规模的班级评分偏低，超大班的评分反而回升。为此在主模型中加入班级人数的平方项进行检验。
+
+```{r}
+d$size2 <- d$size^2
+m2 <- lm(score ~ title + gender + student + year + semester + size + size2, data = d)
+m3 <- lm(score ~ title + gender + student + year + semester + log(size), data = d)
+
+# 嵌套模型检验：m2 比 m1 多的 size² 这一项值不值得加
+anova(m1, m2)
+
+# 二次模型与对数模型中人数项的系数
+sm2 <- tidy(m2) |> dplyr::filter(term %in% c("size", "size2")) |> as.data.frame()
+sm2$estimate  <- format(round(sm2$estimate, 7),   scientific = FALSE, drop0trailing = TRUE)
+sm2$std.error <- format(signif(sm2$std.error, 4), scientific = FALSE, drop0trailing = TRUE)
+sm2$statistic <- round(sm2$statistic, 3)
+sm2$p.value   <- round(sm2$p.value, 4)
+knitr::kable(sm2)
+
+sm3 <- tidy(m3) |> dplyr::filter(term == "log(size)") |> as.data.frame()
+sm3$estimate  <- format(round(sm3$estimate, 6),   scientific = FALSE, drop0trailing = TRUE)
+sm3$std.error <- format(signif(sm3$std.error, 4), scientific = FALSE, drop0trailing = TRUE)
+sm3$statistic <- round(sm3$statistic, 3)
+sm3$p.value   <- round(sm3$p.value, 4)
+knitr::kable(sm3)
+
+# 三个模型横向比较
+cmp <- data.frame(模型 = c("m1 线性", "m2 二次", "m3 对数"))
+cmp$R2     <- round(c(summary(m1)$r.squared,     summary(m2)$r.squared,     summary(m3)$r.squared), 3)
+cmp$调整R2 <- round(c(summary(m1)$adj.r.squared, summary(m2)$adj.r.squared, summary(m3)$adj.r.squared), 3)
+cmp$AIC    <- round(c(AIC(m1), AIC(m2), AIC(m3)), 2)
+cmp$BIC    <- round(c(BIC(m1), BIC(m2), BIC(m3)), 2)
+knitr::kable(cmp, row.names = FALSE)
+
+# 二次项系数与拐点
+co <- coef(m2)
+cat("size 一次项 =", round(co["size"], 6), "；size² 二次项 =", signif(co["size2"], 4), "\n")
+cat("拐点 =", round(-co["size"] / (2 * co["size2"]), 1), "人\n")
+
+# 不同人数下 size 项对评分的贡献
+s <- c(3, 20, 40, 60, 80, 100, 136)
+data.frame(人数 = s, 贡献 = round(co["size"] * s + co["size2"] * s^2, 3)) |>
+  knitr::kable(row.names = FALSE)
+```
+
+```{r, fig.width = 7, fig.height = 4.2, out.width = "85%"}
+ggplot(d, aes(size, score)) +
+  geom_point(alpha = .45) +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "red") +
+  geom_vline(xintercept = -co["size"] / (2 * co["size2"]), linetype = 2) +
+  labs(x = "班级人数", y = "课程评分") +
+  theme_bw()
+```
+
+```{r}
+# 按人数分组的平均分，用于对照上图中二次曲线的形状
+grp <- cut(d$size, breaks = c(0, 20, 35, 55, 80, 100, 137),
+           labels = c("≤20", "21–35", "36–55", "56–80", "81–100", ">100"))
+data.frame(人数分组 = levels(grp),
+           课程数   = as.vector(table(grp)),
+           平均分   = round(as.vector(tapply(d$score, grp, mean)), 3)) |>
+  knitr::kable(row.names = FALSE)
+
+# 未控制其他变量时（即图中那条红色曲线）的最低点
+q_raw <- lm(score ~ size + I(size^2), data = d)
+qb    <- coef(q_raw)
+x_min <- -qb[2] / (2 * qb[3])
+cat("未控制其他变量时，曲线在", round(x_min, 1), "人处最低，约",
+    round(predict(q_raw, data.frame(size = x_min)), 2), "分\n")
+```
+方差分析显示，加入班级人数的平方项后残差平方和显著下降（F(1, 329) = 7.70，p = 0.006），说明人数的影响确实不是线性的。二次模型中一次项系数为 −0.0086（p = 0.006），二次项系数为 0.0000675（p = 0.006），一负一正说明曲线开口向上，拐点约在 64 人：人数少于 64 人时评分随人数增加而下降，超过之后转为上升。按这个模型计算，人数效应（相对人数为 0 的起点）在 20 人时为 −0.15 分、60 人时为 −0.27 分、136 人时为 +0.08 分，也就是从 20 人到 60 人评分再降约 0.12 分，从 60 人到 136 人反而回升约 0.35 分。
+
+前面的散点图把二次拟合曲线叠在数据上（红色曲线为未控制其他变量的拟合，仅用于展示形状）。未控制其他变量时，曲线在约 70 人处最低（约 4.12 分），向两端上升，这与控制其他因素后得到的拐点（63.7 人）位置接近。这一形状与实际分组均值吻合：56 到 80 人组的平均分最低（4.149），100 人以上组回升到 4.345，接近 20 人以下组的 4.415。
+
+改用 log(size) 的模型得到方向一致的结论（系数 −0.085，p = 0.034），且参数个数与线性模型相同，调整 R² 由 0.149 提高到 0.160。模型比较的结果需要注意：AIC 最支持二次模型（412.14），BIC 最支持对数模型（455.81），两者并不一致（BIC 对多一个参数的惩罚更重），但两个标准都认为线性模型最差。因此可以确定“人数的影响不是线性的”。
+
+## 2.4 人数效应与学生类别的混杂
+
+为检验人数的效应是否被学生类别吸收，去掉 student 变量重新估计同一模型。
+
+```{r}
+m1_nostu <- lm(score ~ title + gender + year + semester + size, data = d)
+data.frame(
+  模型 = c("含 student", "不含 student"),
+  size系数 = round(c(coef(m1)["size"], coef(m1_nostu)["size"]), 4),
+  t值 = round(c(summary(m1)$coefficients["size", 3], summary(m1_nostu)$coefficients["size", 3]), 3),
+  p值 = round(c(summary(m1)$coefficients["size", 4], summary(m1_nostu)$coefficients["size", 4]), 4),
+  R2 = round(c(summary(m1)$r.squared, summary(m1_nostu)$r.squared), 3)
+) |> knitr::kable(row.names = FALSE)
+```
+
+```{r, fig.width = 8, fig.height = 4, out.width = "95%"}
+ggplot(d, aes(size, score)) +
+  geom_point(alpha = .5, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  facet_wrap(~ student) +
+  labs(x = "班级人数", y = "课程评分") +
+  theme_bw()
+```
+
+```{r}
+# 各学生类别的课程数、平均班额、平均分，以及组内人数与评分的相关系数
+grp_stu <- d |>
+  dplyr::group_by(student) |>
+  dplyr::summarise(课程数 = dplyr::n(),
+                   平均班额 = round(mean(size), 1),
+                   平均分 = round(mean(score), 3),
+                   组内相关系数 = round(cor(size, score), 3))
+knitr::kable(grp_stu)
+```
+前面的对比表显示，去掉学生类别后，size 系数由 −0.0006（p = 0.585）变为 −0.0021，t 值为 −2.06，在 5% 水平上显著（p = 0.041），同时模型的 R² 由 0.171 降到 0.113。只有在不控制学生类别时，班级人数才表现得有影响。
+
+MBA 课程平均 49.8 人、平均分 4.128，研究生课程平均只有 27.8 人、平均分 4.435。人数多的课往往是 MBA 课程，而 MBA 课程的评分本身偏低。把数据按学生类别分开画（见前面的分面图）后，三组的拟合线都接近水平（组内相关系数分别为 0.016、−0.124、0.013），说明在同一类学生内部，人数与评分几乎没有关系。
+
+因此第 1 节看到的“人数越多评分越低”，很大程度上是“学生类别”在起作用，不能直接解释为班级规模导致评分下降。
+
+## 2.5 学期效应为什么消失
+
+第 1 节发现春季学期的平均分比秋季高 0.243 分（4.452 对 4.209），是六个因素中单变量差异最大的，但在主模型中学期系数只有 0.009 且不显著。为了弄清这个反差，先看两个学期的授课教师构成。
+
+```{r}
+table(d$semester, d$title)
+table(d$semester, d$gender)
+round(tapply(d$size,  d$semester, mean), 1)
+round(tapply(d$score, d$semester, mean), 3)
+```
+
+```{r}
+sem_tab <- data.frame(
+  控制变量 = c("仅学期", "+ 学生类别", "+ 学生类别、年份、人数",
+               "+ 学生类别、年份、人数、职称、性别")
+)
+sem_tab$学期系数 <- round(c(
+  coef(lm(score ~ semester, data = d))[2],
+  coef(lm(score ~ semester + student, data = d))[2],
+  coef(lm(score ~ semester + student + year + size, data = d))[2],
+  coef(lm(score ~ semester + student + year + size + title + gender, data = d))[2]
+), 4)
+knitr::kable(sem_tab, row.names = FALSE)
+```
+
+交叉表显示，春季学期的 85 门课全部由正教授承担，且全部为男教师；秋季学期包含 131 门副教授、58 门助理教授和 66 门正教授课程，59 门由女教师承担的课程也全部集中在秋季。也就是说，学期与职称、性别在数据中是结构性绑定的。再看班额：春季平均 21.3 人，秋季平均 46.1 人。
+
+逐层加入控制变量可以看到学期系数如何变化：只放学期时为 0.243，控制学生类别后降到 0.159，再加入年份和人数后为 0.176，最后加入职称和性别后只剩 0.009 且不显著。春季的评分优势主要来自授课教师构成（正教授、男教师）和较小的班额，并不是开课季节本身。
+
+由于春季不存在副教授和助理教授的课程，无法把季节的独立影响与教师构成完全分离。因此这个结果应理解为“控制教师构成后，学期没有剩余差异”，而不是“开课季节与评分无关”。
+
+## 2.6 残差诊断与多重共线性
+
+```{r, fig.width = 10, fig.height = 8, out.width = "95%"}
+par(mfrow = c(2, 2))
+plot(m1)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+# 残差诊断的数值摘要
+resid_m1 <- residuals(m1)
+worst    <- order(resid_m1)[1:3]
+cat("最大 Cook 距离 =", round(max(cooks.distance(m1)), 3), "\n")
+cat("|残差| 与拟合值的相关系数 =", round(cor(abs(resid_m1), fitted(m1)), 3), "\n")
+cat("Shapiro-Wilk 正态性检验 p 值 =", signif(shapiro.test(resid_m1)$p.value, 3), "\n")
+data.frame(行号 = worst, 残差 = round(resid_m1[worst], 2)) |>
+  knitr::kable(row.names = FALSE)
+```
+残差对拟合值图中，残差大体均匀地分布在 0 附近，没有出现随拟合值增大而扩散的喇叭口；相反，右端拟合值接近 4.7 时残差明显收窄，原因是评分上限为 5 分，高分课程的残差只能取负值。
+
+正态 Q-Q 图的两端偏离对角线，左端偏离更明显，对应编号 219、137、301 的三门残差约 −1.4 至 −1.7 分的低分课程；整体残差近似对称但尾部略厚，因此正态性检验会被拒绝（Shapiro-Wilk 检验 p < 0.001）。在大样本下这不影响系数估计的一致性，但提示线性模型对极低分课程的解释力有限。
+
+Scale-Location 图显示标准化残差的平方根随拟合值上升而下降，残差绝对值与拟合值的相关系数为 −0.225，即评分越高的课程残差离散越小。这与上面的天花板效应一致，并非人数带来的异方差。
+
+Cook 距离图中所有点都远低于常用的 0.5 警戒值，最大 Cook 距离仅为 0.06，说明不存在主导估计结果的强影响点，前面的系数结论是稳健的。
+
+```{r}
+if (requireNamespace("car", quietly = TRUE)) {
+  knitr::kable(round(car::vif(m1), 3))
+} else {
+  message("未安装 car 包，vif 计算跳过；可先运行 install.packages('car')")
+}
+```
+
+多重共线性方面，由于模型中有多个分类变量，car::vif() 返回的是 GVIF 而不是普通的 VIF，需要看最后一列 GVIF^(1/(2Df))。结果显示所有变量的 GVIF 都小于 5，其中最大的两个是开课学期（2.43）和教师职称（2.09），其余变量都在 1.5 以下，说明模型不存在严重的多重共线性。学期与职称偏高，与前面发现的“春季课程全部由正教授承担”一致。
+
+## 2.7 本节小结
+
+本节通过多元线性回归考察了各因素对课程评分的净影响，主要结论有三点：
+(1)职称的作用体现为“正教授与其他职称”之间的差距，副教授与助理教授并无显著差异；
+(2)学生类别的影响较大，研究生课程评分显著高于 MBA 课程；
+(3)评分存在逐年上升的趋势，而教师性别和开课学期在控制其他因素后没有可靠影响。
+
+另外两类“单变量看起来有影响、控制后消失”的现象：班级人数的影响基本由学生类别解释，学期的影响则由授课教师构成解释。所以光比平均分不够，还得控制别的因素。
+
+模型 R² 约为 0.17，解释力有限，评分的绝大部分差异来自课程难度、学生基础、教学方式等未纳入模型的因素。此外，部分交叉类别样本量偏小（如 2002 年的助理教授课程只有 20 门），加上评分存在 5 分的上限导致残差非正态，上述系数的精度和推断都应谨慎看待。
+
+
+# 3. 预测性建模与评估
+
+以预测为目标，将数据划分为训练集和测试集；在训练集上重新建模，并引入岭回归、Lasso 等正则化方法进行比较与选择，最终在测试集上评估模型的预测能力。
+
+## 3.1 训练集与测试集的划分
+
+与第 2 节不同，本节的目标是预测而不是解释，因此先把数据分成互不重叠的两部分：训练集用于估计模型，测试集只在最后评估时使用。按 7:3 的比例随机划分，并用 set.seed(303250203) 固定随机数种子，保证结果可复现（该数值取自学号后 9 位；R 的种子取值上限为 2^31−1，完整学号超出范围）。
+
+```{r}
+set.seed(303250203)
+n <- nrow(d)
+idx <- sample(n, size = round(0.7 * n))
+train <- d[idx, ]
+test  <- d[-idx, ]
+
+cat("训练集", nrow(train), "门；测试集", nrow(test), "门\n")
+cat("训练集平均分", round(mean(train$score), 3),
+    "；测试集平均分", round(mean(test$score), 3), "\n")
+```
+
+划分结果为训练集 238 门、测试集 102 门，两部分的平均分分别为 4.245 和 4.327，分别位于全样本均值 4.269 的两侧，说明随机划分没有造成明显的样本偏差。
+
+## 3.2 训练集上的模型估计
+
+参与比较的有四类预测：一是训练集均值，即不看任何自变量、一律用训练集平均分去预测，作为“什么都不做”的基准；二是普通最小二乘（OLS），自变量与第 2 节主模型相同；三是岭回归（L2 惩罚）；四是 Lasso（L1 惩罚）。后两者用 10 折交叉验证选择惩罚参数 λ，需要先把因子变量展开成设计矩阵。
+
+```{r}
+rmse <- function(actual, pred) sqrt(mean((actual - pred)^2))
+mae  <- function(actual, pred) mean(abs(actual - pred))
+r2   <- function(actual, pred) 1 - sum((actual - pred)^2) / sum((actual - mean(actual))^2)
+
+fml <- score ~ title + gender + student + year + semester + size
+
+# 基准：只用训练集均值预测
+m_null <- lm(score ~ 1, data = train)
+
+# 与第 2 节相同的设定，但只用训练集估计
+m_train <- lm(fml, data = train)
+
+# 正则化模型需要设计矩阵
+library(glmnet)
+x_train <- model.matrix(fml, data = train)[, -1]
+x_test  <- model.matrix(fml, data = test)[, -1]
+y_train <- train$score
+y_test  <- test$score
+
+set.seed(303250203)
+cv_ridge <- cv.glmnet(x_train, y_train, alpha = 0, nfolds = 10)
+set.seed(303250203)
+cv_lasso <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 10)
+
+cat("训练集 OLS 的 R² =", round(summary(m_train)$r.squared, 3), "\n")
+cat("岭回归 lambda.min =", signif(cv_ridge$lambda.min, 3),
+    "；Lasso lambda.min =", signif(cv_lasso$lambda.min, 3), "\n")
+```
+
+交叉验证选出的惩罚参数都很小（岭回归 λ = 0.0933，Lasso λ = 0.0248），说明数据并不需要很强的收缩。
+
+## 3.3 测试集评估
+
+把训练集上估计出的模型直接用于预测测试集的 102 门课程，计算 RMSE、MAE 和 R²。
+
+```{r}
+pred_null  <- predict(m_null, newdata = test)
+pred_ols   <- predict(m_train, newdata = test)
+pred_ridge <- as.numeric(predict(cv_ridge, s = "lambda.min", newx = x_test))
+pred_lasso <- as.numeric(predict(cv_lasso, s = "lambda.min", newx = x_test))
+
+perf <- data.frame(
+  模型 = c("训练集均值", "OLS", "岭回归", "Lasso"),
+  RMSE = round(c(rmse(y_test, pred_null), rmse(y_test, pred_ols),
+                 rmse(y_test, pred_ridge), rmse(y_test, pred_lasso)), 4),
+  MAE  = round(c(mae(y_test, pred_null), mae(y_test, pred_ols),
+                 mae(y_test, pred_ridge), mae(y_test, pred_lasso)), 4),
+  R2   = round(c(r2(y_test, pred_null), r2(y_test, pred_ols),
+                 r2(y_test, pred_ridge), r2(y_test, pred_lasso)), 4)
+)
+knitr::kable(perf, row.names = FALSE)
+
+cat("OLS 预测值范围", round(range(pred_ols), 3),
+    "；测试集实际范围", round(range(y_test), 3), "\n")
+```
+
+```{r, fig.width = 4.8, fig.height = 4.2, out.width = "60%"}
+ggplot(data.frame(实际 = y_test, 预测 = pred_ols), aes(实际, 预测)) +
+  geom_point(alpha = .6) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, color = "red") +
+  labs(x = "实际评分", y = "预测评分") +
+  theme_bw()
+```
+
+上面的评估表显示，三个模型的测试集 RMSE 非常接近：岭回归最小（0.4382），OLS 次之（0.4404），Lasso 略高（0.4408），三者相差不到 0.003 分；对应的 R² 在 0.054 至 0.066 之间。作为基准的“训练集均值”RMSE 为 0.4607，三个模型只比“一律预测平均分”好约 4%，并没有出现质的变化。
+
+正则化的改善其实很有限：岭回归虽然数值上最好，但只比 OLS 低 0.002 分（约 0.5%），远小于随机划分本身带来的波动，第 3.5 节显示单次划分的 RMSE 标准差约为 0.03 分。另外，训练集 R² 为 0.184，而测试集 R² 只有 0.05 至 0.07，落差比全样本模型（0.17）明显。这既可能来自一定程度的过拟合，也可能只是因为测试集只有 102 门课程、R² 的抽样波动本来就大，3.5 节的重复划分支持后一种解释。两种情况下，正则化都没能把样本外的解释力提上去，这与第 2 节的结论一致：可用的自变量太少，预测上限由模型设定决定。
+
+上图是 OLS 的预测值与实际值对比。散点大体沿 45 度虚线分布，但纵向跨度远小于横向：模型的预测范围只有 3.83 至 4.68 分，而测试集的实际得分从 2.72 到 5.00 分。模型几乎不会预测出 3.9 分以下的课程，低分课程只能靠截距附近的平均值去猜。低分课程数量少、偏离大，是 RMSE 无法进一步下降的直接原因。
+
+## 3.4 Lasso 选择出的变量
+
+Lasso 的优势在于可以把不重要的变量系数压成 0，起到变量筛选的作用。
+
+```{r}
+co_lasso     <- coef(cv_lasso, s = "lambda.min")[-1, 1]
+co_lasso_1se <- coef(cv_lasso, s = "lambda.1se")[-1, 1]
+
+data.frame(变量 = names(co_lasso), 系数 = round(co_lasso, 4)) |>
+  dplyr::filter(系数 != 0) |>
+  knitr::kable(row.names = FALSE)
+
+cat("设计矩阵共", length(co_lasso), "列；lambda.min 下保留", sum(co_lasso != 0),
+    "个变量；lambda.1se 下保留", sum(co_lasso_1se != 0), "个变量\n")
+```
+
+```{r, fig.width = 6.5, fig.height = 4, out.width = "80%"}
+plot(cv_lasso)
+```
+
+上图是 Lasso 的交叉验证曲线，横轴为 −log(λ)、纵轴为交叉验证均方误差，两条竖线分别对应 lambda.min 与 lambda.1se；横轴上方标出的是每个 λ 下被保留的非零变量个数。
+在 λ = lambda.min 下，Lasso 从 9 个设计矩阵列中只保留了 4 个：正教授、研究生、2004 年和春季；副教授、女教师、本科生、2003 年和班级人数五项的系数被压成 0。
+若改用更严厉的 lambda.1se，则一个变量都不保留，预测退化为训练集均值。保留的变量大多与第 2 节吻合：正教授、研究生和 2004 年都是显著的，被剔除的班级人数也确实不显著；但 2003 年在第 2 节显著（p = 0.019）却被剔除，学期不显著却被保留，说明变量筛选与显著性检验并不总是一致。
+
+由于 glmnet 默认对自变量做标准化，上表中的系数是标准化尺度上的数值，只能用于比较相对重要性，不能直接读成“多少分”。另外，“春季”与“正教授”在数据中高度相关（春季课程全部由正教授承担），当两个强相关变量同时存在时，Lasso 保留哪一个带有相当的任意性，因此不宜把“保留春季而剔除 2003 年”当作实质性的结论。
+
+## 3.5 稳健性：换一次划分会不会改变结论
+
+3.3 的结论建立在一次随机划分上，排名可能带有偶然性。为此重复 200 次随机划分，每次重新估计三个模型，比较测试集 RMSE 的平均水平。
+
+```{r}
+R <- 200
+res <- matrix(NA_real_, R, 4)
+for (s in seq_len(R)) {
+  set.seed(s)
+  ii  <- sample(n, round(0.7 * n))
+  tr  <- d[ii, ]
+  te  <- d[-ii, ]
+  xtr <- model.matrix(fml, data = tr)[, -1]
+  xte <- model.matrix(fml, data = te)[, -1]
+  fit_ols <- lm(fml, data = tr)
+  set.seed(s)
+  cvr <- cv.glmnet(xtr, tr$score, alpha = 0, nfolds = 5)
+  set.seed(s)
+  cvl <- cv.glmnet(xtr, tr$score, alpha = 1, nfolds = 5)
+  res[s, ] <- c(
+    rmse(te$score, rep(mean(tr$score), nrow(te))),
+    rmse(te$score, predict(fit_ols, te)),
+    rmse(te$score, as.numeric(predict(cvr, s = "lambda.min", newx = xte))),
+    rmse(te$score, as.numeric(predict(cvl, s = "lambda.min", newx = xte)))
+  )
+}
+colnames(res) <- c("训练集均值", "OLS", "岭回归", "Lasso")
+data.frame(模型 = colnames(res),
+           平均RMSE = round(colMeans(res), 4),
+           标准差   = round(apply(res, 2, sd), 4)) |>
+  knitr::kable(row.names = FALSE)
+
+win <- apply(res[, 2:4], 1, which.min)
+cat("三种方法的胜出次数：OLS", sum(win == 1), "；岭回归", sum(win == 2), "；Lasso", sum(win == 3), "\n")
+
+cat("Lasso 减 OLS 的平均差 =", round(mean(res[, "Lasso"] - res[, "OLS"]), 4),
+    "；差值范围", round(min(res[, "Lasso"] - res[, "OLS"]), 4), "至",
+    round(max(res[, "Lasso"] - res[, "OLS"]), 4), "\n")
+```
+
+200 次划分的结果是：OLS 平均 RMSE 为 0.4463，岭回归 0.4455，Lasso 0.4446，三者相差不到 0.002 分，而单次划分之间的标准差约为 0.03 分。三种方法的差异远小于随机划分带来的波动：在 200 次划分中，OLS 胜出 51 次、岭回归 44 次、Lasso 105 次，胜负可以随意翻转。因此不能认为正则化带来了实质性的预测提升，3.3 中“岭回归略好”也只是某一次划分的结果。
+
+## 3.6 本节小结
+
+本节按 7:3 划分训练集与测试集，在训练集上重新估计了 OLS、岭回归和 Lasso，并在测试集上评估。
+
+主要结论有两点：
+（1）四类预测中，OLS、岭回归和 Lasso 的测试集 RMSE 都在 0.438 至 0.441 分之间，只比“一律预测平均分”的 0.461 分好约 4%，测试集 R² 只有 0.05 至 0.07，明显低于第 2 节全样本的 0.17。
+（2）正则化在这份数据上没有带来实质改善：三种方法的差异不到 0.003 分，远小于随机划分带来的波动（标准差约 0.03 分），重复 200 次划分也显示三种方法的胜负可以随意翻转。
+预测精度的上限取决于手上有哪些变量。第 2 节的六个自变量只能解释约 17% 的评分差异，换用任何估计方法都无法突破这个上限。若想真正提高预测能力，需要引入课程难度、学生基础、教师授课风格等模型之外的变量；而这已超出本文的数据范围。
+
